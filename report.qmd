@@ -22,13 +22,39 @@ library(readxl)
 load("data/rdata/sales_df.RData")
 load("data/rdata/rents_df.RData")
 
-inner_west_sales <- sales_df |> dplyr::filter(lga == "Inner West",
-                                              greater_sydney == "Total",
-                                              gmr == "Total",
+RBA_cash_rate <- read_excel("data/RBA-cash-rate-august-2024.xls",sheet="Data")
+RBA_cash_rate <- RBA_cash_rate[-(1:11), -(3:18)]
+RBA_cash_rate[,2] <- lapply(RBA_cash_rate[,2],as.numeric)
+RBA_cash_rate[,1] <- lapply(RBA_cash_rate[,1],as.Date,"%d-%b-%Y")
+colnames(RBA_cash_rate) <- c("date","cash_rate")
+
+RBA_cash_rate = RBA_cash_rate |>
+  dplyr::filter(
+    (month(date) == 3 | month(date) == 6 | month(date) == 9 | month(date) == 12) &
+      date > as.Date("2018-01-01")
+  ) |>
+  group_by(strftime(date,"%Y-%m")) |>
+  filter(date == max(date)) |>
+  dplyr::mutate(
+    date = case_when(
+      month(date) == 3 ~ as.Date(sprintf("%s-03-31",year(date))),
+      month(date) == 6 ~ as.Date(sprintf("%s-06-30",year(date))),
+      month(date) == 9 ~ as.Date(sprintf("%s-09-30",year(date))),
+      month(date) == 12 ~ as.Date(sprintf("%s-12-31",year(date))),
+    )
+  )
+RBA_cash_rate = RBA_cash_rate[,-3]
+
+sales_df <- merge(x = sales_df,y=RBA_cash_rate,by="date")
+rents_df <- merge(x = rents_df,y=RBA_cash_rate,by="date")
+
+inner_west_sales <- sales_df |> dplyr::filter(lga == "Inner West" &
+                                              greater_sydney == "Total" &
+                                              gmr == "Total" &
                                               rings == "Total")
-inner_west_rents <- rents_df |> dplyr::filter(lga == "Inner West",
-                                              greater_sydney == "Total",
-                                              gmr == "Total",
+inner_west_rents <- rents_df |> dplyr::filter(lga == "Inner West" &
+                                              greater_sydney == "Total"&
+                                              gmr == "Total"&
                                               rings == "Total")
 
 nsw_sales <- sales_df |> dplyr::filter(lga == "Total",
@@ -49,55 +75,68 @@ sydney_rents <- rents_df |> dplyr::filter(lga == "Total",
                                        gmr == "Total",
                                        rings == "Total")
 
+
 ```
 
-# Abstract
+## Abstract
 
-# Introduction
+## Introduction
+
 The property market in Australia is a topic of much debate recently. There has been much commentary regarding the cost of rent and the going price of a home. What this report sets out to examine is how the rental and property market in the Inner West local government area (LGA) of Sydney, NSW has changed over the period of January 2018 to June 2024.
 
 This time period was chosen for a few reasons. The COVID-19 pandemic occurred in early 2020 to approximately late 2021. In that period, mortgage interest rates hit historic lows. In the period after, interest rates rose to combat rising inflation, a phenomenon not local to Australia, but worldwide. With that, recent commentary as of October 2024 has surrounded the rising cost of living in Australia, the apparent lack of affordability of housing, and the impact of property investors on the market.
 
 By using the Inner West LGA as a case study of metropolitan Sydney, this report hopes to provide some insights regarding how sales and rents have changed over the prescribed 6 year period, and attribute some reasons for why these changes have occurred.
 
-# The Data
-The data used for this report was sourced from the Department of Communities and Justice, a New South Wales State government department @dcj-rents-and-sales They provide a quarterly report on rents and sales in NSW, with a sheet labelled by post code, and a sheet labelled by local government area. The data used in this report consists of the quarterly report starting from March 2018 to March 2024 (for sales) and June 2024 (for rents).
+## The Data
 
-# The Inner West Local Government Area
+The data used for this report was sourced from the Department of Communities and Justice, a New South Wales State government department @dcj-rents-and-sales. They provide a quarterly report on rents and sales in NSW, with a sheet labelled by post code, and a sheet labelled by local government area. The data used in this report consists of the quarterly report starting from March 2018 to March 2024 (for sales) and June 2024 (for rents).
 
-The Inner West LGA covers an area of 35 square kilometres in the city of Sydney @council-profile, with an estimated population in 2021 of 182,818 people. The estimated median age of the LGA is 38 years old @census-inner-west. An estimated 48.2% of people aged 15 and over had completed a Bachelor Degree or higher, compared to the national 26.3%. There were an estimated 85,118 private dwellings in the LGA, with 74,091 of those dwellings occupied and 8,152 unoccupied.
+## The Inner West Local Government Area
 
-# Data Loading and Cleaning
-All rent and sales report data was downloaded from the Department of Communities and Justice website, they came in the xlsx format with three sheets, an explanatory page, rents/sales per post code, and rents/sales per LGA. The LGA sheet from each of the reports was loaded and combined into two separate data frames for rents and sales. Inner West specific data was split off into it's own data frame, as well as data for the whole of NSW, and the whole of the Sydney metropolitan region. 
+The Inner West LGA covers an area of 35 square kilometres in the city of Sydney @council-profile, with an estimated population in 2021 of 182,818 people. The estimated median age of the LGA is 38 years old @census-inner-west. An estimated 48.2% of people aged 15 and over had completed a Bachelor Degree or higher, compared to the national 26.3%. In 2021, there were an estimated 85,118 private dwellings in the LGA, with 74,091 of those dwellings occupied and 8,152 unoccupied.
 
-# Rent in the Inner West
+## Data Loading and Cleaning
 
-```{r Inner West Rent Plot}
-#| label: iw-rent
+All rent and sales report data was downloaded from the Department of Communities and Justice website, they came in the xlsx format with three sheets, an explanatory page, rents/sales per post code, and rents/sales per LGA. The LGA sheet from each of the reports was loaded and combined into two separate data frames for rents and sales. Inner West specific data was split off into it's own data frame, as well as data for the whole of NSW, and the whole of the Sydney metropolitan region.
+
+## Rent in the Inner West
+
+```{r}
+#| label: fig-iw-rent
 #| fig-cap: "Median weekly rent in the Inner West LGA from January 2018 to July 2024."
 
+set_breaks = scales::breaks_width("6 months")
+scale = set_breaks(as.Date(c("2017-04-01","2024-07-01"))) - days(1)
+
+innerwest_colour = "#32a852"
+
 fig_total_rent <- inner_west_rents |> 
-  filter(dwelling_type == "Total", no_of_bedrooms == "Total") |>
+  dplyr::filter(dwelling_type == "Total"& no_of_bedrooms == "Total") |>
   ggplot() +
   aes(x = date, y = median_rent_price) +
-  geom_point(colour="red",shape="cross") +
-  scale_x_date(date_breaks = "6 months",date_labels = "%b %Y") +
+  geom_point(colour = innerwest_colour) +
+  geom_line(colour = innerwest_colour,linetype = "dashed") +
+  scale_x_date(breaks = scale,date_labels = "%b %Y") +
   scale_y_continuous(labels=scales::dollar_format()) +
   geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
   geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
   annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=650) +
-  theme(axis.text.x=element_text(angle = 45, vjust=1,hjust=1)) +
-  labs(x = "",y = "Median Rent")
+  theme(axis.text.x=element_text(angle = 45, vjust=1,hjust=1),plot.title = element_text(hjust = 0.5)) +
+  labs(x = "",y = "Median Rent",title = "Median Rent of the Inner West LGA")
 fig_total_rent
 ```
 
-Median rent in the Inner West LGA was trending downwards from January 2018 to January 2020, as shown in @iw-rent. In the quarter ending March 2020 (the first quarter ending within the pandemic period) was \$555 per week. This was \$35 per week less than the two years earlier in the quarter ending March 2018. In the quarter ending June 2021, the lowest median weekly rent in the period this report is concerned with is recorded at $490 per week. This quarter marks a steady trend upwards, barring the March and June quarters of 2023 where the median weekly rent remained the same, with the last quarter this report looks at recording a median weekly rent of \$725. Between that minima recorded in June 2021 and the latest reported quarter in June 2024, median rents rose by \$235.
+Median rent in the Inner West LGA was trending downwards from January 2018 to January 2020, as shown in @fig-iw-rent. In the quarter ending March 2020 (the first quarter ending within the pandemic period) was \$555 per week. This was \$35 per week less than the two years earlier in the quarter ending March 2018. In the quarter ending June 2021, the lowest median weekly rent in the period this report is concerned with is recorded at \$490 per week. This quarter marks a steady trend upwards, barring the March and June quarters of 2023 where the median weekly rent remained the same, with the last quarter this report looks at recording a median weekly rent of \$725. Between that minima recorded in June 2021 and the latest reported quarter in June 2024, median rents rose by \$235.
 
-```{r IW,Syd,NSW Rent Plot}
-#| label: iw-syd-nsw-rent
-#| fig-cap: ""
+```{r}
+#| label: fig-iw-syd-nsw-rent
+#| fig-cap: "Inner West (green triangle), greater Sydney (red circle) and NSW (blue square) median rents from January 2018 to June 2024."
 
-comparison_df <- rents_df |>
+greatersyd_colour = "#e82b09"
+wholensw_colour = "#099ee8"
+
+fig_comp <- rents_df |>
   dplyr::filter(
     ((lga == "Inner West" & greater_sydney == "Total") |
       (lga == "Total" & greater_sydney == "Greater Sydney") | 
@@ -110,26 +149,32 @@ comparison_df <- rents_df |>
       lga == "Inner West" ~ "Inner West",
       greater_sydney == "Greater Sydney" ~ "Greater Sydney",
       TRUE ~ "NSW"
-    )
-  )
-
-fig_comp <- comparison_df |> ggplot() +
-  aes(x = date,y=median_rent_price, colour = factor(region_lab),shape=factor(region_lab)) +
-  geom_point() +
-  scale_x_date(date_breaks = "6 months",date_labels = "%b %Y") +
+    ),
+    region_lab = factor(region_lab,levels = c("Inner West","Greater Sydney","NSW"))
+  ) |> ggplot() +
+  aes(x = date,y=median_rent_price, colour = factor(region_lab)) +
+  #geom_point() +
+  geom_line(linetype = "dashed") +
+  scale_x_date(breaks = scale ,date_labels = "%b %Y") +
   scale_y_continuous(labels=scales::dollar_format()) +
   geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
   geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
   annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=650) +
-  theme(axis.text.x=element_text(angle = 45, vjust=1,hjust=1)) +
-  labs(x = "",y = "Median Rent",colour = "",shape="")
+  scale_color_manual(values = c(innerwest_colour,greatersyd_colour,wholensw_colour)) +
+  theme(
+    axis.text.x=element_text(angle = 45, vjust=1,hjust=1),
+    plot.title = element_text(hjust = 0.5)
+    ) +
+  labs(x = element_blank(),y = "Median Rent",colour = element_blank(),shape=element_blank(),
+       title="Median Rent of the Inner West LGA, Greater Sydney Region, \nand Whole of NSW")
 
 fig_comp
 ```
 
-As shown in @iw-syd-nsw-rent, there is a notable difference in NSW, Greater Sydney, and Inner West median rents. NSW rents were relatively stable pre-pandemic, and Greater Sydney rents followed a slight downward trend. During the pandemic, Greater Sydney and Inner West rents followed a similar trend, whilst NSW rents actually began lifting substantially earlier than the Inner West and Sydney. Post-pandemic, all three have been a pretty consistent upward trend, with Inner West and Greater Sydney median rents near identical for most of the quarters. 
+As shown in @fig-iw-syd-nsw-rent, there is a notable difference in NSW, Greater Sydney, and Inner West median rents. NSW rents were relatively stable pre-pandemic, and Greater Sydney rents followed a slight downward trend. During the pandemic, Greater Sydney and Inner West rents followed a similar trend, whilst NSW rents actually began lifting substantially earlier than the Inner West and Sydney. Post-pandemic, Inner West, Greater Sydney, and whole of NSW median rents have been on a pretty steady upwards trend.
 
 ```{r lm Inner West rents}
+#| output: false
 
 lm_iw_rent_df = inner_west_rents |>
   dplyr::filter(dwelling_type == "Total" & no_of_bedrooms == "Total" & date > as.Date("2021-01-01")) |>
@@ -143,4 +188,152 @@ summary(lm_iw_rent)
 cor(lm_iw_rent_df$timestep,lm_iw_rent_df$median_rent_price)
 ```
 
-Focusing on the rise of median weekly rent in the Inner West post-pandemic, an almost perfect linear trend is evident. 
+Looking at the fairly sustained linear trend in Inner West weekly rent prices between January 2022 and June 2024 (bar a plateau between September and December 2023), it seemed appropriate to explore a bit further. Firstly the Pearson correlation coefficient between rent and time was calculated to be 0.984 (a perfectly positive linear correlation would give a value of 1). When fitted with a linear model, a coefficient of 1.55 was given. This can be interpreted as a \$1.55 increase per week in the median weekly rent.
+
+## Rental Bonds in the Inner West
+
+```{r}
+#| label: fig-iw-total-bonds
+#| fig-cap: "Total number of rental bonds in the Inner West over the reporting period."
+fig_iw_bonds_new = inner_west_rents |>
+  dplyr::filter(dwelling_type == "Total" & no_of_bedrooms == "Total") |>
+  ggplot() +
+  aes(x = date, y = no_of_bonds_total) +
+  scale_x_date(breaks = scale,date_labels = "%b %Y") +
+  scale_y_continuous(labels=comma) +
+  geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
+  geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
+  annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=33000) +
+  theme(axis.text.x=element_text(angle = 45, vjust=1,hjust=1),
+    plot.title = element_text(hjust = 0.5)) +
+  labs(x = "", y = "Total Number of Rental Bonds",
+       title = "Total Number of Rental Bonds in the Inner West") +
+  geom_point(colour = innerwest_colour,shape = "circle") +
+  geom_line(linetype = "dashed",colour = innerwest_colour)
+
+fig_iw_bonds_new
+```
+
+Looking at @fig-iw-total-bonds, there is a noticeable downturn in total rental bonds in the Inner West from the quarter ending March 2023 onwards. The number of bonds essentially represents the number of active rental properties in the reporting period. From March 2023, there are three quarterly dips in total bonds, followed by a hike between the quarters ending March and June 2024, followed again by another dip. That dip reported in the quarter ending June 2024 is the largest loss of bonds between quarters outside of the pandemic period, with a loss of 481 bonds. The downward trend realised between March 2023 and June 2024 is noteworthy in that no where else in the reporting period is a dip in total bonds followed by another dip, even during the pandemic. Furthermore, between the quarter ending March 2023 and quarter ending June 2024, 863 bonds were wiped from the Inner West.
+
+Consider the reasons why total bonds would shrink. Properties may have been taken off the rental market altogether (sold to owner-occupiers, renovations, sold to developers), or properties may not have been able to find renters.
+
+```{r Inner and Outer Rings}
+#| label: fig-bonds-total-syd-rings
+#| fig-cap: "Total number of bonds in the inner, middle, and outer rings of Sydney over the reporting period."
+
+fig_rings_bonds_total <- rents_df |> 
+  dplyr::filter(
+    lga == "Total" & 
+    (rings == "Inner Ring" | rings == "Middle Ring" | rings == "Outer Ring") &
+    no_of_bedrooms == "Total" & 
+    dwelling_type == "Total" & 
+    gmr == "Total" &
+    greater_sydney == "Total"
+  ) |>
+  ggplot() +
+  aes(x = date, y = no_of_bonds_total , colour = rings) +
+  scale_x_date(breaks = scale,date_labels = "%b %Y") +
+  scale_y_continuous(labels=comma) +
+  geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
+  geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
+  annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=230000) +
+  theme(axis.text.x=element_text(angle = 45, vjust=1,hjust=1)) +
+  labs(x = element_blank(), y = "Total Number of Bonds",colour = "Rings") +
+  geom_point() +
+  geom_line(linetype="dashed")
+
+fig_rings_bonds_total
+
+```
+
+The ring classification was introduced by the Bureau of Communications, Arts and Regional Research (BCARR) for dividing Australian cities. The inner ring contains a cities CBD and inner suburbs, of which the Inner West LGA belongs to. The middle ring contains lower density housing but have some high density areas, examples of middle ring LGA's include Canterbury-Bankstown and Parramatta. The outer ring refers to the outer limits of a city, examples include Blacktown and Hornsby LGA.
+
+```{r}
+fig_comp <- rents_df |>
+  dplyr::filter(
+      lga == "Total" & greater_sydney == "Greater Sydney" &
+      gmr == "Total" & rings == "Total" & 
+      dwelling_type == "Total" & no_of_bedrooms == "Total"
+  ) |> 
+  ggplot() +
+  aes(x = date,y=no_of_bonds_total) +
+  geom_point(colour = greatersyd_colour) +
+  geom_line(linetype = "dashed",colour = greatersyd_colour) +
+  scale_x_date(breaks = scale ,date_labels = "%b %Y") +
+  scale_y_continuous(labels=comma) +
+  geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
+  geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
+  annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=610000) +
+  scale_color_manual(values = c(greatersyd_colour,wholensw_colour)) +
+  theme(
+    axis.text.x=element_text(angle = 45, vjust=1,hjust=1),
+    plot.title = element_text(hjust = 0.5)
+    ) +
+  labs(x = element_blank(),y = element_blank(),colour = element_blank(),
+       title="Total Number of Rental Bonds in Greater Sydney")
+
+fig_comp
+```
+
+With this increase in total number of bonds, it seemed necessary to expand the scope and investigate how the rest of the greater Sydney region was faring. In @fig-bonds-total-syd-rings, the total number of bonds across the inner, middle, and outer rings of Sydney are shown. Pre-covid all three regions were on a steady trend up. During the pandemic, the inner and middle rings took a dip towards the start of the period, but regained traction shortly after. Interestingly, the outer ring actually maintained it's upward trend through the pandemic. Post-pandemic, things get a bit rocky for the inner and middle ring regions, with both losing a few thousand bonds between June 2023 and June 2024 (3,088 lower for the inner ring and 2,580 lower for the middle ring). The outer ring on the other hand added 1,729 bonds to it's region in that same period. That being said, there is a substantial difference in the number of rentals lost in the inner and middle rings and the number of rentals gained in the outer ring.
+
+The rental stock in the Inner West is shrinking, a trend consistent when expanding the scope to look at the cities rings, with the inner and middle ring showing a stagnant trend. When expanding the scope even more to look at the Greater Sydney region, over the past year, rental stock has plateaued.
+
+## Property Sales in the Inner West
+
+```{r}
+fig_iw_sales = inner_west_sales |>
+  dplyr::filter(dwelling_type == "Total") |>
+  ggplot() +
+  aes(x = date, y = median_sales_price) +
+  geom_point(colour = innerwest_colour) +
+  geom_line(colour = innerwest_colour,linetype = "dashed") +
+  scale_x_date(breaks = scale,date_labels = "%b %Y") +
+  scale_y_continuous(labels=scales::dollar_format()) +
+  geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
+  geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
+  annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=1550) +
+  theme(axis.text.x=element_text(angle = 45, vjust=1,hjust=1),plot.title = element_text(hjust = 0.5)) +
+  labs(x = "",y = "Median Sales Price (000's AUD)",title = "Median Property Price of the Inner West LGA")
+fig_iw_sales
+```
+
+```{r}
+
+library(plotrix)
+fig_sales_comp <- sales_df |>
+  dplyr::filter(
+    ((lga == "Inner West" & greater_sydney == "Total") |
+      (lga == "Total" & greater_sydney == "Greater Sydney") | 
+      (lga == "Total" & greater_sydney == "Total")) &
+      gmr == "Total" & rings == "Total" & 
+      dwelling_type == "Total"
+  ) |> 
+  dplyr::mutate(
+    region_lab = case_when(
+      lga == "Inner West" ~ "Inner West",
+      greater_sydney == "Greater Sydney" ~ "Greater Sydney",
+      TRUE ~ "NSW"
+    ),
+    region_lab = factor(region_lab,levels = c("Inner West","Greater Sydney","NSW"))
+  ) |> ggplot() +
+  aes(x = date,y=median_sales_price, colour = factor(region_lab)) +
+  #geom_point() +
+  geom_line(linetype = "dashed") +
+  scale_x_date(breaks = scale ,date_labels = "%b %Y") +
+  scale_y_continuous(labels=scales::dollar_format()) +
+  geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
+  geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
+  annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=1550) +
+  scale_color_manual(values = c(innerwest_colour,greatersyd_colour,wholensw_colour)) +
+  theme(
+    axis.text.x=element_text(angle = 45, vjust=1,hjust=1),
+    plot.title = element_text(hjust = 0.5)
+    ) +
+  labs(x = element_blank(),y = "Median Sales Price (000's AUD)",
+       colour = element_blank(),shape=element_blank(),
+       title="Median Property Price of the Inner West LGA, \nGreater Sydney Region, and Whole of NSW")
+
+fig_sales_comp
+```
