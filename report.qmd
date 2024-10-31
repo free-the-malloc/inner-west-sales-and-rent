@@ -21,32 +21,8 @@ library(readxl)
 
 load("data/rdata/sales_df.RData")
 load("data/rdata/rents_df.RData")
+load("data/rdata/rba_cash_rate.RData")
 
-RBA_cash_rate <- read_excel("data/RBA-cash-rate-august-2024.xls",sheet="Data")
-RBA_cash_rate <- RBA_cash_rate[-(1:11), -(3:18)]
-RBA_cash_rate[,2] <- lapply(RBA_cash_rate[,2],as.numeric)
-RBA_cash_rate[,1] <- lapply(RBA_cash_rate[,1],as.Date,"%d-%b-%Y")
-colnames(RBA_cash_rate) <- c("date","cash_rate")
-
-RBA_cash_rate = RBA_cash_rate |>
-  dplyr::filter(
-    (month(date) == 3 | month(date) == 6 | month(date) == 9 | month(date) == 12) &
-      date > as.Date("2018-01-01")
-  ) |>
-  group_by(strftime(date,"%Y-%m")) |>
-  filter(date == max(date)) |>
-  dplyr::mutate(
-    date = case_when(
-      month(date) == 3 ~ as.Date(sprintf("%s-03-31",year(date))),
-      month(date) == 6 ~ as.Date(sprintf("%s-06-30",year(date))),
-      month(date) == 9 ~ as.Date(sprintf("%s-09-30",year(date))),
-      month(date) == 12 ~ as.Date(sprintf("%s-12-31",year(date))),
-    )
-  )
-RBA_cash_rate = RBA_cash_rate[,-3]
-
-sales_df <- merge(x = sales_df,y=RBA_cash_rate,by="date")
-rents_df <- merge(x = rents_df,y=RBA_cash_rate,by="date")
 
 inner_west_sales <- sales_df |> dplyr::filter(lga == "Inner West" &
                                               greater_sydney == "Total" &
@@ -92,6 +68,8 @@ By using the Inner West LGA as a case study of metropolitan Sydney, this report 
 
 The data used for this report was sourced from the Department of Communities and Justice, a New South Wales State government department @dcj-rents-and-sales. They provide a quarterly report on rents and sales in NSW, with a sheet labelled by post code, and a sheet labelled by local government area. The data used in this report consists of the quarterly report starting from March 2018 to March 2024 (for sales) and June 2024 (for rents).
 
+Reserve Bank of Australia (RBA) cash rate data was sourced from the RBA website on the 31st of October, 2024 @rba-cash-rate. Total average weekly wage in NSW was sourced from the Australian Bureau of Statistics (ABS) @abs-wages.
+
 ## The Inner West Local Government Area
 
 The Inner West LGA covers an area of 35 square kilometres in the city of Sydney @council-profile, with an estimated population in 2021 of 182,818 people. The estimated median age of the LGA is 38 years old @census-inner-west. An estimated 48.2% of people aged 15 and over had completed a Bachelor Degree or higher, compared to the national 26.3%. In 2021, there were an estimated 85,118 private dwellings in the LGA, with 74,091 of those dwellings occupied and 8,152 unoccupied.
@@ -131,7 +109,7 @@ Median rent in the Inner West LGA was trending downwards from January 2018 to Ja
 
 ```{r}
 #| label: fig-iw-syd-nsw-rent
-#| fig-cap: "Inner West (green triangle), greater Sydney (red circle) and NSW (blue square) median rents from January 2018 to June 2024."
+#| fig-cap: "Inner West (green), greater Sydney (red) and NSW (blue) median rents from January 2018 to June 2024."
 
 greatersyd_colour = "#e82b09"
 wholensw_colour = "#099ee8"
@@ -173,21 +151,6 @@ fig_comp
 
 As shown in @fig-iw-syd-nsw-rent, there is a notable difference in NSW, Greater Sydney, and Inner West median rents. NSW rents were relatively stable pre-pandemic, and Greater Sydney rents followed a slight downward trend. During the pandemic, Greater Sydney and Inner West rents followed a similar trend, whilst NSW rents actually began lifting substantially earlier than the Inner West and Sydney. Post-pandemic, Inner West, Greater Sydney, and whole of NSW median rents have been on a pretty steady upwards trend.
 
-```{r lm Inner West rents}
-#| output: false
-
-lm_iw_rent_df = inner_west_rents |>
-  dplyr::filter(dwelling_type == "Total" & no_of_bedrooms == "Total" & date > as.Date("2021-01-01")) |>
-  dplyr::mutate(
-    timestep = as.integer(date - as.Date("2021-03-30")) / 7
-  )
-
-lm_iw_rent = lm(median_rent_price ~ timestep,data=lm_iw_rent_df)
-
-summary(lm_iw_rent)
-cor(lm_iw_rent_df$timestep,lm_iw_rent_df$median_rent_price)
-```
-
 Looking at the fairly sustained linear trend in Inner West weekly rent prices between January 2022 and June 2024 (bar a plateau between September and December 2023), it seemed appropriate to explore a bit further. Firstly the Pearson correlation coefficient between rent and time was calculated to be 0.984 (a perfectly positive linear correlation would give a value of 1). When fitted with a linear model, a coefficient of 1.55 was given. This can be interpreted as a \$1.55 increase per week in the median weekly rent.
 
 ## Rental Bonds in the Inner West
@@ -200,7 +163,7 @@ fig_iw_bonds_new = inner_west_rents |>
   ggplot() +
   aes(x = date, y = no_of_bonds_total) +
   scale_x_date(breaks = scale,date_labels = "%b %Y") +
-  scale_y_continuous(labels=comma) +
+  scale_y_continuous(labels=scales::comma) +
   geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
   geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
   annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=33000) +
@@ -234,7 +197,7 @@ fig_rings_bonds_total <- rents_df |>
   ggplot() +
   aes(x = date, y = no_of_bonds_total , colour = rings) +
   scale_x_date(breaks = scale,date_labels = "%b %Y") +
-  scale_y_continuous(labels=comma) +
+  scale_y_continuous(labels=scales::comma) +
   geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
   geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
   annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=230000) +
@@ -261,7 +224,7 @@ fig_comp <- rents_df |>
   geom_point(colour = greatersyd_colour) +
   geom_line(linetype = "dashed",colour = greatersyd_colour) +
   scale_x_date(breaks = scale ,date_labels = "%b %Y") +
-  scale_y_continuous(labels=comma) +
+  scale_y_continuous(labels=scales::comma) +
   geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
   geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
   annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=610000) +
@@ -283,6 +246,9 @@ The rental stock in the Inner West is shrinking, a trend consistent when expandi
 ## Property Sales in the Inner West
 
 ```{r}
+#| label: fig-inner-west-sales
+#| fig-cap: "Median property sales price of the Inner West LGA"
+
 fig_iw_sales = inner_west_sales |>
   dplyr::filter(dwelling_type == "Total") |>
   ggplot() +
@@ -295,13 +261,16 @@ fig_iw_sales = inner_west_sales |>
   geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
   annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=1550) +
   theme(axis.text.x=element_text(angle = 45, vjust=1,hjust=1),plot.title = element_text(hjust = 0.5)) +
-  labs(x = "",y = "Median Sales Price (000's AUD)",title = "Median Property Price of the Inner West LGA")
+  labs(x = element_blank(),y = "Median Sales Price (000's AUD)",title = "Median Property Price of the Inner West LGA")
 fig_iw_sales
 ```
 
-```{r}
+As shown in @fig-inner-west-sales, it looks as though the median property price in the Inner West peaked in the quarter ending December 2021, after which it took a pretty big fall over three quarters. From the quarter ending September 2022, it has been consistent growth for about five quarters, until the last reported quarter ending March 2024, where the median property price didn't change. 
 
-library(plotrix)
+```{r}
+#| label: fig-iw-syd-nsw-median-sales
+#| fig-cap: "Median property price in Inner West LGA (green), Greater Sydney region (red), and NSW (blue)."
+
 fig_sales_comp <- sales_df |>
   dplyr::filter(
     ((lga == "Inner West" & greater_sydney == "Total") |
@@ -319,7 +288,7 @@ fig_sales_comp <- sales_df |>
     region_lab = factor(region_lab,levels = c("Inner West","Greater Sydney","NSW"))
   ) |> ggplot() +
   aes(x = date,y=median_sales_price, colour = factor(region_lab)) +
-  #geom_point() +
+  geom_point() +
   geom_line(linetype = "dashed") +
   scale_x_date(breaks = scale ,date_labels = "%b %Y") +
   scale_y_continuous(labels=scales::dollar_format()) +
@@ -337,3 +306,75 @@ fig_sales_comp <- sales_df |>
 
 fig_sales_comp
 ```
+
+The median property price in the Inner West LGA consistently sits above the median property price of both Greater Sydney and NSW across all quarters in the reporting period. In the quarter ending March 2024, the last quarter reported, the Inner West LGA had a median property price of \$1,500,000, \$1,000,000 for the Greater Sydney region, and \$870,000 for NSW. 
+
+
+## Number of Property Sales
+
+```{r}
+#| label: fig-no-of-sales-iw
+#| fig-cap: "Number of properties sold in the Inner West LGA."
+
+fig_no_sales <- inner_west_sales |>
+  dplyr::filter(dwelling_type == "Total") |>
+  ggplot() +
+  aes(x = date, y = no_of_sales) +
+  scale_x_date(breaks = scale,date_labels = "%b %Y") +
+  scale_y_continuous(labels=scales::comma) +
+  geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
+  geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
+  annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=1000) +
+  theme(axis.text.x=element_text(angle = 45, vjust=1,hjust=1),
+    plot.title = element_text(hjust = 0.5)) +
+  labs(x = element_blank(), y = "Total Number of Sales",
+       title = "Total Number of Property Sales in the Inner West") +
+  geom_point(colour = innerwest_colour,shape = "circle") +
+  geom_line(linetype = "dashed",colour = innerwest_colour)
+
+fig_no_sales
+```
+
+
+
+## The Effect of the RBA Cash Rate on Rents and Sales in the Inner West LGA
+
+```{r}
+#| label: fig-rba-cr
+#| fig-cap: "Reserve Bank of Australia overnight cash rate over the period this report is looking at"
+
+fig_rba_cr <- RBA_cash_rate |>
+  dplyr::filter(date > as.Date("2017-12-31") & date < as.Date("2024-07-01")) |>
+  ggplot() +
+  aes(x = date,y = cash_rate) +
+  geom_line() +
+  scale_x_date(breaks = scale,date_labels = "%b %Y") +
+  scale_y_continuous(labels=scales::label_percent(scale=1)) +
+  geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
+  geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
+  annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=3) +
+  theme(axis.text.x=element_text(angle = 45, vjust=1,hjust=1),
+    plot.title = element_text(hjust = 0.5)) +
+  labs(x = element_blank(), y = "Overnight Cash Rate",
+       title = "Reserve Bank of Australia Overnight Cash Rate")
+fig_rba_cr
+```
+
+The RBA overnight cash rate has changed considerably over the period this report looks at. It hit historic lows during the pandemic, hitting a minimum of 0.10% (the lowest it has ever been). It currently sits at 4.35%, the highest it has been since November 2011. Within the span of two and a half years, the cash rate has risen 4.25% from it's minimum. Australia is highly dependent on variable rate home loans, as opposed to the United States with its infamous 30 year fixed rate loan. The variable loan is essentially pegged to the RBA cash rate. In this section of the report, the relationship between the RBA cash rate and property price, median rent, total number of rental bonds, and number of properties sold in the Inner West LGA will be explored. 
+
+```{r}
+#| label: fig-iw-rents-against-cr
+#| fig-cap: "Median rent in the Inner West LGA against the RBA cash rate"
+
+fig_iw_rent_cr <- inner_west_rents |> 
+  dplyr::filter(dwelling_type == "Total" & no_of_bedrooms == "Total") |>
+  ggplot() +
+  aes(x = cash_rate, y = median_rent_price) +
+  geom_point(colour = innerwest_colour) +
+  scale_y_continuous(labels=scales::dollar_format()) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Cash Rate",y = "Median Rent",title = "Median Rent of the Inner West LGA\nagainst RBA Cash Rate")
+fig_iw_rent_cr
+```
+
+The relationship between the RBA cash rate looks fairly linearly correlated, although of course some discretion is advised given the low number of data points used
