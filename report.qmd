@@ -3,10 +3,10 @@ title: "Inner West LGA Sales and Rent Report"
 date: "`r Sys.Date()`"
 author: "Cooper Gee"
 format: 
-  html: 
-    embed-resources: true
-    code-fold: true
-    code-tools: true
+  pdf:
+    documentclass: scrreprt
+    pdf-engine: pdflatex
+    echo: false
 table-of-contents: true
 number-sections: true
 bibliography: bibliography.bib
@@ -18,6 +18,7 @@ csl: ieee.csl
 
 library(tidyverse)
 library(readxl)
+library(gridExtra)
 
 load("data/rdata/sales_df.RData")
 load("data/rdata/rents_df.RData")
@@ -62,21 +63,21 @@ This time period was chosen for a few reasons. The COVID-19 pandemic occurred in
 
 By using the Inner West LGA as a choice case study of metropolitan Sydney, this report hopes to provide some insights regarding how sales and rents have changed over the prescribed 6 year period, and attribute some reasons for why these changes have occurred.
 
-## The Data
+### The Data
 
 The data used for this report was sourced from the Department of Communities and Justice, a New South Wales State government department @dcj-rents-and-sales. They provide a quarterly report on rents and sales in NSW, with a sheet labelled by post code, and a sheet labelled by local government area. The data used in this report consists of the quarterly report starting from March 2018 to March 2024 (for sales) and June 2024 (for rents).
 
 Reserve Bank of Australia (RBA) cash rate data was sourced from the RBA website @rba-cash-rate. Total average weekly wage in NSW was sourced from the Australian Bureau of Statistics (ABS) @abs-wages.
 
-## The Inner West Local Government Area
+### The Inner West Local Government Area
 
 The Inner West LGA covers an area of 35 square kilometres in the city of Sydney @council-profile, with an estimated population in 2021 of 182,818 people. The estimated median age of the LGA is 38 years old @census-inner-west. An estimated 48.2% of people aged 15 and over had completed a Bachelor Degree or higher, compared to the national 26.3%. In 2021, there were an estimated 85,118 private dwellings in the LGA, with 74,091 of those dwellings occupied and 8,152 unoccupied.
 
-## Data Loading and Cleaning
+### Data Loading and Cleaning
 
 The rent and sales data utilised in this report was sourced from the quarterly reports published by the NSW Department of Communities and Justice. The report is provided for rents/sales for each LGA and each postcode.
 
-## Rent in the Inner West LGA and the Greater Sydney Region
+## Rent in the Inner West LGA
 
 ```{r}
 #| label: fig-iw-rent
@@ -99,7 +100,7 @@ fig_total_rent <- inner_west_rents |>
   geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
   annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=650) +
   theme(axis.text.x=element_text(angle = 45, vjust=1,hjust=1),plot.title = element_text(hjust = 0.5)) +
-  labs(x = "",y = "Median Rent",title = "Median Rent of the Inner West LGA")
+  labs(x = element_blank(),y = "Median Rent",title = "Median Rent of the Inner West LGA")
 fig_total_rent
 ```
 
@@ -139,15 +140,67 @@ fig_comp <- rents_df |>
   scale_color_manual(values = c(innerwest_colour,greatersyd_colour,wholensw_colour)) +
   theme(
     axis.text.x=element_text(angle = 45, vjust=1,hjust=1),
-    plot.title = element_text(hjust = 0.5)
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "bottom"
     ) +
   labs(x = element_blank(),y = "Median Rent",colour = element_blank(),shape=element_blank(),
-       title="Median Rent of the Inner West LGA, Greater Sydney Region, \nand Whole of NSW")
+       title="Median Rent of the Inner West LGA, Greater Sydney\nRegion, and Whole of NSW")
 
 fig_comp
 ```
 
 Median rent in the Inner West and Greater Sydney look somewhat different prior to the pandemic period, as seen in @fig-iw-syd-nsw-rent. During the pandemic, the trends seem to converge. 
+
+### Median Rent by Number of Rooms and Dwelling Type
+
+```{r}
+
+df <- inner_west_rents |> 
+  dplyr::filter(dwelling_type == "Total" & no_of_bedrooms != "Total" & no_of_bedrooms != "Not Specified")
+df$no_of_bedrooms <- factor(df$no_of_bedrooms,levels=c("Bedsitter","1 Bedroom","2 Bedrooms","3 Bedrooms","4 or more Bedrooms"))
+
+fig_rent_rooms <- df |>
+  ggplot() +
+  aes(x = date, y = median_rent_price, colour = no_of_bedrooms) +
+  geom_line() +
+  scale_x_date(breaks = scale,date_labels = "%b %Y") +
+  scale_y_continuous(labels=scales::dollar_format()) +
+  geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
+  geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
+  annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=1250) +
+  theme(axis.text.x=element_text(angle = 45, vjust=1,hjust=1),plot.title = element_text(hjust = 0.5),
+    legend.position = "bottom") +
+  labs(x = element_blank(),y = "Median Rent",
+       title = "Median Rent of the Inner West LGA\n(Factored by Number of Bedrooms)",
+       colour = element_blank())
+fig_rent_rooms
+```
+
+When considering the number of bedrooms a dwelling has, those with more bedrooms held a consistently higher median rent than those with less bedrooms. When factoring by dwelling type, the median rent for units has been on a relatively steady upward trend post pandemic. The median rents for houses and townhouses follow a similar trend. 
+
+```{r}
+
+df <- inner_west_rents |> 
+  dplyr::filter(dwelling_type != "Total" & no_of_bedrooms == "Total")
+df$dwelling_type <- factor(df$dwelling_type,levels = c("House","Townhouse","Flat/Unit","Other"))
+
+fig_rent_type <- df |>
+  ggplot() +
+  aes(x = date, y = median_rent_price, colour = dwelling_type) +
+  geom_line() +
+  scale_x_date(breaks = scale,date_labels = "%b %Y") +
+  scale_y_continuous(labels=scales::dollar_format()) +
+  geom_vline(xintercept=as.Date("2020-03-15"),linetype="dotted") +
+  geom_vline(xintercept=as.Date("2021-10-11"),linetype="dotted") +
+  annotate("text",label="Pandemic\nPeriod",x=as.Date("2021-01-01"),y=850) +
+  theme(axis.text.x=element_text(angle = 45, vjust=1,hjust=1),plot.title = element_text(hjust = 0.5),
+    legend.position = "bottom") +
+  labs(x = element_blank(),y = "Median Rent",
+       title = "Median Rent of the Inner West LGA\n(Factored by Dwelling Type)",
+       colour=element_blank())
+
+fig_rent_type
+```
 
 ## Rental Bonds in the Inner West
 
@@ -239,9 +292,46 @@ fig_rings_bonds_total
 
 ```
 
-In @fig-bonds-total-syd-rings, the total number of bonds across the inner, middle, and outer rings of Sydney are shown. Pre-covid all three regions were on a steady trend up. During the pandemic, the inner and middle rings took a dip towards the start of the period, but regained traction shortly after. Interestingly, the outer ring actually maintained it's upward trend through the pandemic. Post-pandemic, the trend for inner and middle rental bonds is unsteady, with both losing a few thousand bonds between June 2023 and June 2024 (3,088 lower for the inner ring and 2,580 lower for the middle ring). The outer ring on the other hand added 1,729 bonds in that same period.
+In @fig-bonds-total-syd-rings, the total number of bonds across the inner, middle, and outer rings of Sydney are shown. Pre-covid all three regions were on a steady trend up. During the pandemic, the inner and middle rings took a dip towards the start of the period, but regained traction shortly after. The outer ring maintained it's upward trend through the pandemic. Post-pandemic, the trend for inner and middle ring rental bonds is unsteady, with both losing a few thousand bonds between June 2023 and June 2024 (3,088 lower for the inner ring and 2,580 lower for the middle ring). The outer ring on the other hand added 1,729 bonds in that same period.
 
-The rental stock in the Inner West is shrinking, a trend consistent when expanding the scope to look at the cities rings, with the inner and middle ring showing a stagnant trend. When expanding the scope even more to look at the Greater Sydney region, over the past year, rental stock has plateaued.
+### Number of Rental Bonds by Number of Bedrooms and Dwelling Type
+
+```{r}
+#| label: fig-iw-bonds-dwelling-type
+
+fig_iw_bonds_bedrooms <- inner_west_rents |>
+  dplyr::filter(dwelling_type == "Total" & no_of_bedrooms != "Total" & no_of_bedrooms != "Not Specified" & date == "2024-06-30") |> 
+  ggplot() +
+  aes(x = factor(no_of_bedrooms),y=no_of_bonds_total,fill=factor(no_of_bedrooms)) +
+  scale_y_continuous(labels=scales::comma) +
+  geom_bar(stat="identity") +
+  labs(fill=element_blank(),
+       x = element_blank(),
+       y= element_blank(),
+       title="Total Number of Bonds by Number of Bedrooms\n(Quarter Ending June 2024)") +
+  theme(plot.title = element_text(hjust = 0.5),legend.position="none")
+
+fig_iw_bonds_bedrooms
+```
+
+Rental bonds for houses and flats are shown to have an upward trend over the period, whereas town houses and other dwelling types have lost a share of bonds.
+
+```{r}
+
+fig_iw_bonds_dwelling <- inner_west_rents |>
+  dplyr::filter(dwelling_type != "Total" & no_of_bedrooms == "Total" & date == "2024-06-30") |> 
+  ggplot() +
+  aes(x = dwelling_type,y=no_of_bonds_total,fill=dwelling_type) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels=scales::comma) +
+  labs(fill=element_blank(),
+       x = element_blank(),
+       y= "Number of Bonds",
+       title="Total Number of Bonds by Dwelling Type\n(Quarter Ending June 2024)") +
+  theme(plot.title = element_text(hjust = 0.5),legend.position = "none")
+
+fig_iw_bonds_dwelling
+```
 
 ## Property Sales in the Inner West
 
@@ -309,7 +399,6 @@ fig_sales_comp
 
 The median property price in the Inner West LGA consistently sits above the median property price of both Greater Sydney and NSW across all quarters in the reporting period. In the quarter ending March 2024, the last quarter reported, the Inner West LGA had a median property price of \$1,500,000, \$1,000,000 for the Greater Sydney region, and \$870,000 for NSW. 
 
-
 ## Number of Property Sales
 
 ```{r}
@@ -360,7 +449,7 @@ fig_rba_cr <- RBA_cash_rate |>
 fig_rba_cr
 ```
 
-The RBA overnight cash rate has changed considerably over the period this report looks at. It hit historic lows during the pandemic, hitting a minimum of 0.10% (the lowest it has ever been). It currently sits at 4.35%, the highest it has been since November 2011. Within the span of two and a half years, the cash rate has risen 4.25% from it's minimum. In this section of the report, the relationship between the RBA cash rate and property price, median rent, total number of rental bonds, and number of properties sold in the Inner West LGA will be explored. 
+The RBA overnight cash rate has changed considerably over the period this report looks at. It hit historic lows during the pandemic, hitting a minimum of 0.10% (a historic minimum). It currently sits at 4.35%, the highest it has been since November 2011. Within the span of two and a half years, the cash rate has risen 4.25% from it's minimum. In this section of the report, the relationship between the RBA cash rate and property price, median rent, total number of rental bonds, and number of properties sold in the Inner West LGA will be explored. 
 
 ```{r}
 #| label: fig-iw-rents-against-cr
@@ -379,16 +468,89 @@ fig_iw_rent_cr
 ```
 
 ```{r}
+#| echo: false
+
+temp_df = inner_west_rents |> 
+  dplyr::filter(dwelling_type == "Total" & no_of_bedrooms == "Total")
+
+cor(temp_df$cash_rate,temp_df$median_rent_price)
+```
+
+The median rent in the Inner West against cash rate is strongly correlated, with a Pearson correlation coefficient of 0.96. 
+
+```{r}
 #| label: fig-iw-bonds-against-cr
 #| fig-cap: "Median rent in the Inner West LGA against the RBA cash rate"
 
 fig_iw_rent_cr <- inner_west_rents |> 
   dplyr::filter(dwelling_type == "Total" & no_of_bedrooms == "Total") |>
   ggplot() +
-  aes(x = cash_rate, y = no_of_bonds_new) +
+  aes(x = cash_rate, y = no_of_bonds_total) +
+  scale_y_continuous(labels=scales::comma) +
+  scale_x_continuous(breaks=seq(0,4.5,by=0.5)) +
   geom_point(colour = innerwest_colour) +
-  scale_y_continuous(labels=scales::dollar_format()) +
   theme(plot.title = element_text(hjust = 0.5)) +
   labs(x = "Cash Rate",y = "Total Bonds",title = "Total Number of Bonds Held in the\nInner West LGA against RBA Cash Rate")
 fig_iw_rent_cr
 ```
+
+```{r}
+cor(temp_df$cash_rate,temp_df$no_of_bonds_total)
+```
+
+The correlation between total number of bonds held and cash rate isn't as strong, with a correlation coefficient of 0.63.
+
+```{r}
+#| label: fig-sales-cr
+#| fig-caption: ""
+
+df <- inner_west_sales |>
+  dplyr::filter(dwelling_type == "Total")
+
+fig_iw_sales_cr <- df |>
+  ggplot() +
+  aes(x = cash_rate, y = median_sales_price, colour = factor(year(date))) +
+  scale_y_continuous(labels=scales::dollar_format()) +
+  scale_x_continuous(breaks=seq(0,4.5,by=0.5)) +
+  geom_point(colour = innerwest_colour) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Cash Rate",y = "Median Sales Price (000's AUD)",title = "Median Sales Price in the\nInner West against Cash Rate")
+
+fig_iw_sales_cr
+```
+
+```{r}
+#| echo: false
+
+cor(df$cash_rate,df$median_sales_price)
+
+df |> filter(cash_rate < 2)
+```
+
+Correlation between median sales price and RBA cash rate is relatively weak, with a correlation coefficient of 0.18. The six quarters starting from the quarter ending September 2022 show some potential correlation, these are the points in @fig-sales-cr where the cash rate was greater than 2%. 
+
+```{r}
+#| label: fig-no-sales-cr
+
+fig_iw_no_sales_cr <- df |>
+  ggplot() +
+  aes(x = cash_rate, y = no_of_sales, colour = factor(year(date))) +
+  scale_x_continuous(breaks=seq(0,4.5,by=0.5)) +
+  geom_point(colour = innerwest_colour) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Cash Rate",y = element_blank(),title = "Median Sales Price in the\nInner West against Cash Rate")
+
+fig_iw_no_sales_cr
+```
+
+```{r}
+#| echo: false
+
+cor(df$cash_rate,df$no_of_sales)
+
+```
+
+Number of properties sold is also weakly correlated with a correlation coefficient of -0.13
+
+## Conclusion
+
